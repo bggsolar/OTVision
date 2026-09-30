@@ -133,6 +133,7 @@ For detailed documentation, visit:
 - [Getting Started Guide](https://opentrafficcam.org/OTVision/gettingstarted/firstuse/)
 - [Requirements](https://opentrafficcam.org/OTVision/gettingstarted/requirements/)
 - [Installation Guide](https://opentrafficcam.org/OTVision/gettingstarted/installation/)
+- [Detection coordinates and tracking compatibility](docs/detection-coordinates.md)
 
 ## Contributing
 
