@@ -23,7 +23,7 @@ class Coordinate:
 
     @staticmethod
     def center_of(detection: Detection) -> "Coordinate":
-        return Coordinate(detection.x, detection.y)
+        return Coordinate(detection.x + detection.w / 2, detection.y + detection.h / 2)
 
 
 @dataclass(frozen=True, repr=True)
@@ -36,18 +36,20 @@ class BoundingBox:
     @staticmethod
     def from_xywh(detection: Detection) -> "BoundingBox":
         """Calculates xyxy coordinates from Detection with xywh data:
-            pixel values for xcenter, ycenter, width and height.
+            pixel values for the top-left corner x, y, width and height.
 
         Args:
             detection (Detection): detection to compute BoundingBox for.
 
         Returns:
-            BoundingBox with pixel coordinates: xmin, ymin, xmay, ymax
+            BoundingBox with pixel coordinates: xmin, ymin, xmax, ymax
         """
-        diff_w = detection.w / 2
-        diff_h = detection.h / 2
-        d = detection
-        return BoundingBox(d.x - diff_w, d.y - diff_h, d.x + diff_w, d.y + diff_h)
+        return BoundingBox(
+            detection.x,
+            detection.y,
+            detection.x + detection.w,
+            detection.y + detection.h,
+        )
 
     def as_tuple(self) -> tuple[float, float, float, float]:
         return (self.xmin, self.ymin, self.xmax, self.ymax)
