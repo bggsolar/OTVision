@@ -74,3 +74,24 @@ def test_long_gap_without_reliable_direction_remains_eligible() -> None:
     track.add_detection(SimpleNamespace(no=11), detection(100, 100, 60, 25))
     track.add_detection(SimpleNamespace(no=12), detection(100, 100, 60, 25))
     assert track.allows_direction_after_gap(50, detection(105, 100, 60, 25))
+
+
+def test_long_gap_does_not_rejoin_a_later_box_of_the_other_car() -> None:
+    # In the same clip the first competing box at 20687 is rejected, but
+    # a box of that other car at 20688 slips past a direction-only threshold.
+    track = ActiveIouTrack(
+        4354, SimpleNamespace(no=20646), detection(459.914, 113.581, 70.330, 23.941)
+    )
+    track.add_detection(
+        SimpleNamespace(no=20647), detection(457.980, 111.463, 66.560, 24.908)
+    )
+    track.add_detection(
+        SimpleNamespace(no=20648), detection(455.098, 111.199, 65.232, 24.346)
+    )
+
+    assert not track.allows_direction_after_gap(
+        20688, detection(472.605, 105.346, 63.633, 26.446)
+    )
+    assert not track.allows_direction_after_gap(
+        20692, detection(457.664, 101.010, 57.498, 26.519)
+    )
