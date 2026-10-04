@@ -99,6 +99,39 @@ class ActiveIouTrack:
     def frame_span(self) -> int:
         return self.last_frame - self.first_frame
 
+    def allows_direction_after_gap(self, frame_no: FrameNo, detection: Detection) -> bool:
+        """Reject a long-gap match that reverses a recently observed motion.
+
+        IoU alone compares the last observed boxes, even when dozens of frames
+        have elapsed. This check applies only after more than five missed frames
+        and only with three consecutive observations of clear motion. It does
+        not claim to resolve ambiguous stationary or occluded objects.
+        """
+        if frame_no - self.last_frame - 1 <= 5 or len(self.center) < 3:
+            return True
+        if self.frame_no[-1] - self.frame_no[-2] != 1:
+            return True
+        if self.frame_no[-2] - self.frame_no[-3] != 1:
+            return True
+
+        first, _, last = self.center[-3:]
+        velocity_x = (last.x - first.x) / 2
+        velocity_y = (last.y - first.y) / 2
+        box = self.bboxes[-1]
+        diagonal = ((box.xmax - box.xmin) ** 2 + (box.ymax - box.ymin) ** 2) ** 0.5
+        speed = (velocity_x**2 + velocity_y**2) ** 0.5
+        if speed < 0.03 * diagonal:
+            return True
+
+        candidate = Coordinate.center_of(detection)
+        displacement_x = candidate.x - last.x
+        displacement_y = candidate.y - last.y
+        # Reject when the candidate lies more than a quarter box diagonal
+        # behind the observed direction of travel.
+        return velocity_x * displacement_x + velocity_y * displacement_y >= (
+            -0.25 * diagonal * speed
+        )
+
     def iou_with(self, detection: Detection) -> float:
         return iou(self.bboxes[-1], BoundingBox.from_xywh(detection))
 
@@ -190,11 +223,14 @@ class IouTracker(Tracker):
             if detections:
                 # get det with highest iou
                 iou_pairs = (
-                    (i, det, track.iou_with(det)) for i, det in enumerate(detections)
+                    (i, det, track.iou_with(det))
+                    for i, det in enumerate(detections)
+                    if track.allows_direction_after_gap(frame.no, det)
                 )
-                best_index, best_match, best_iou = max(iou_pairs, key=lambda p: p[2])
+                best = max(iou_pairs, key=lambda p: p[2], default=None)
 
-                if best_iou >= self.sigma_iou:
+                if best is not None and best[2] >= self.sigma_iou:
+                    best_index, best_match, _ = best
                     track.add_detection(frame, best_match)
                     updated_tracks.append(track)
 
