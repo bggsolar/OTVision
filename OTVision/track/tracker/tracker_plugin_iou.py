@@ -104,19 +104,22 @@ class ActiveIouTrack:
 
         IoU alone compares the last observed boxes, even when dozens of frames
         have elapsed. This check applies only after more than five missed frames
-        and only with three consecutive observations of clear motion. It does
-        not claim to resolve ambiguous stationary or occluded objects.
+        An isolated observation cannot establish identity across such a gap.
+        With three recent observations, motion is measured per elapsed frame,
+        even when individual detection frames were missed. This does not
+        resolve ambiguous stationary or occluded objects.
         """
-        if frame_no - self.last_frame - 1 <= 5 or len(self.center) < 3:
+        if frame_no - self.last_frame - 1 <= 5:
             return True
-        if self.frame_no[-1] - self.frame_no[-2] != 1:
-            return True
-        if self.frame_no[-2] - self.frame_no[-3] != 1:
+        if len(self.center) == 1:
+            return False
+        if len(self.center) < 3 or self.frame_no[-1] - self.frame_no[-3] > 8:
             return True
 
         first, _, last = self.center[-3:]
-        velocity_x = (last.x - first.x) / 2
-        velocity_y = (last.y - first.y) / 2
+        observation_span = self.frame_no[-1] - self.frame_no[-3]
+        velocity_x = (last.x - first.x) / observation_span
+        velocity_y = (last.y - first.y) / observation_span
         box = self.bboxes[-1]
         diagonal = ((box.xmax - box.xmin) ** 2 + (box.ymax - box.ymin) ** 2) ** 0.5
         speed = (velocity_x**2 + velocity_y**2) ** 0.5
