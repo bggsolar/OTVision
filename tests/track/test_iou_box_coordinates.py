@@ -1,7 +1,14 @@
 """Regression tests for persisted top-left xywh detection coordinates."""
 
 from OTVision.domain.detection import Detection
-from OTVision.track.tracker.tracker_plugin_iou import BoundingBox, Coordinate, iou
+from types import SimpleNamespace
+
+from OTVision.track.tracker.tracker_plugin_iou import (
+    ActiveIouTrack,
+    BoundingBox,
+    Coordinate,
+    iou,
+)
 
 
 def detection(x: float, y: float, w: float, h: float) -> Detection:
@@ -34,3 +41,96 @@ def test_changed_box_width_does_not_create_a_false_match() -> None:
     # The legacy center-based reconstruction yields about 0.429 instead.
     assert iou(previous, wider) == 0.25
     assert iou(previous, wider) < 0.38
+
+
+def test_long_gap_does_not_join_cars_moving_in_opposite_directions() -> None:
+    # Real track 4363 from the 20630–20690 review clip: one car leaves left;
+    # 37 missed frames later another car appears to its right.
+    track = ActiveIouTrack(
+        4363,
+        SimpleNamespace(no=20637),
+        detection(508.2, 123.4, 74.5, 26.7),
+    )
+    track.add_detection(SimpleNamespace(no=20638), detection(503.6, 119.8, 73.0, 26.5))
+    track.add_detection(SimpleNamespace(no=20639), detection(496.2, 118.4, 75.5, 27.4))
+    track.add_detection(SimpleNamespace(no=20640), detection(491.3, 118.8, 70.8, 24.1))
+
+    other_car = detection(524.5, 118.4, 61.6, 25.2)
+    assert not track.allows_direction_after_gap(20678, other_car)
+
+
+def test_direction_gate_preserves_short_gap_and_forward_motion() -> None:
+    track = ActiveIouTrack(1, SimpleNamespace(no=10), detection(100, 100, 60, 25))
+    track.add_detection(SimpleNamespace(no=11), detection(95, 100, 60, 25))
+    track.add_detection(SimpleNamespace(no=12), detection(90, 100, 60, 25))
+
+    assert track.allows_direction_after_gap(15, detection(100, 100, 60, 25))
+    assert track.allows_direction_after_gap(20, detection(70, 100, 60, 25))
+    assert not track.allows_direction_after_gap(20, detection(115, 100, 60, 25))
+
+
+def test_long_gap_without_reliable_direction_remains_eligible() -> None:
+    track = ActiveIouTrack(1, SimpleNamespace(no=10), detection(100, 100, 60, 25))
+    track.add_detection(SimpleNamespace(no=11), detection(100, 100, 60, 25))
+    track.add_detection(SimpleNamespace(no=12), detection(100, 100, 60, 25))
+    assert track.allows_direction_after_gap(50, detection(105, 100, 60, 25))
+
+
+def test_long_gap_does_not_rejoin_a_later_box_of_the_other_car() -> None:
+    # In the same clip the first competing box at 20687 is rejected, but
+    # a box of that other car at 20688 slips past a direction-only threshold.
+    track = ActiveIouTrack(
+        4354, SimpleNamespace(no=20646), detection(459.914, 113.581, 70.330, 23.941)
+    )
+    track.add_detection(
+        SimpleNamespace(no=20647), detection(457.980, 111.463, 66.560, 24.908)
+    )
+    track.add_detection(
+        SimpleNamespace(no=20648), detection(455.098, 111.199, 65.232, 24.346)
+    )
+
+    assert not track.allows_direction_after_gap(
+        20688, detection(472.605, 105.346, 63.633, 26.446)
+    )
+    assert not track.allows_direction_after_gap(
+        20692, detection(457.664, 101.010, 57.498, 26.519)
+    )
+
+
+def test_single_observation_cannot_bridge_a_long_gap() -> None:
+    # Two visually checked false links in the 2295–2460 clip. There is no
+    # measured direction before either long absence.
+    cases = [
+        (2306, (467.490, 137.496, 82.635, 26.829),
+         2349, (489.375, 140.344, 76.254, 33.118)),
+        (2399, (462.393, 103.096, 52.770, 23.772),
+         2450, (435.727, 104.818, 67.096, 27.220)),
+    ]
+    for first_frame, first_box, last_frame, last_box in cases:
+        track = ActiveIouTrack(
+            first_frame, SimpleNamespace(no=first_frame), detection(*first_box)
+        )
+        assert not track.allows_direction_after_gap(
+            last_frame, detection(*last_box)
+        )
+        assert track.allows_direction_after_gap(
+            first_frame + 3, detection(*last_box)
+        )
+
+
+def test_sparse_recent_motion_blocks_a_different_vehicle() -> None:
+    # The car moves left at 10232, 10234 and 10236; at 10260 the boxed
+    # object is visibly an orange transporter, almost at the former position.
+    track = ActiveIouTrack(
+        2226, SimpleNamespace(no=10232),
+        detection(194.502, 68.794, 30.179, 17.435),
+    )
+    track.add_detection(
+        SimpleNamespace(no=10234), detection(189.686, 68.966, 29.259, 17.501)
+    )
+    track.add_detection(
+        SimpleNamespace(no=10236), detection(185.845, 69.053, 29.153, 17.123)
+    )
+    assert not track.allows_direction_after_gap(
+        10260, detection(182.057, 67.184, 41.871, 22.184)
+    )

@@ -99,6 +99,52 @@ class ActiveIouTrack:
     def frame_span(self) -> int:
         return self.last_frame - self.first_frame
 
+    def allows_direction_after_gap(self, frame_no: FrameNo, detection: Detection) -> bool:
+        """Reject a long-gap match that reverses a recently observed motion.
+
+        IoU alone compares the last observed boxes, even when dozens of frames
+        have elapsed. This check applies only after more than five missed frames
+        An isolated observation cannot establish identity across such a gap.
+        With three recent observations, motion is measured per elapsed frame,
+        even when individual detection frames were missed. This does not
+        resolve ambiguous stationary or occluded objects.
+        """
+        if frame_no - self.last_frame - 1 <= 5:
+            return True
+        if len(self.center) == 1:
+            return False
+        if len(self.center) < 3 or self.frame_no[-1] - self.frame_no[-3] > 8:
+            return True
+
+        first, _, last = self.center[-3:]
+        observation_span = self.frame_no[-1] - self.frame_no[-3]
+        velocity_x = (last.x - first.x) / observation_span
+        velocity_y = (last.y - first.y) / observation_span
+        box = self.bboxes[-1]
+        diagonal = ((box.xmax - box.xmin) ** 2 + (box.ymax - box.ymin) ** 2) ** 0.5
+        speed = (velocity_x**2 + velocity_y**2) ** 0.5
+        if speed < 0.03 * diagonal:
+            return True
+
+        candidate = Coordinate.center_of(detection)
+        displacement_x = candidate.x - last.x
+        displacement_y = candidate.y - last.y
+        elapsed = frame_no - self.last_frame
+        # An opposite-direction vehicle may enter at nearly the same position
+        # a few frames after the first candidate was rejected. Its location
+        # must also remain near the position predicted by recent motion.
+        prediction_error = (
+            (displacement_x - velocity_x * elapsed) ** 2
+            + (displacement_y - velocity_y * elapsed) ** 2
+        ) ** 0.5
+        if prediction_error > 1.5 * diagonal:
+            return False
+        # Reject when the candidate lies more than a quarter box diagonal
+        # behind the observed direction of travel.
+        return velocity_x * displacement_x + velocity_y * displacement_y >= (
+            -0.25 * diagonal * speed
+        )
+
     def iou_with(self, detection: Detection) -> float:
         return iou(self.bboxes[-1], BoundingBox.from_xywh(detection))
 
@@ -190,11 +236,14 @@ class IouTracker(Tracker):
             if detections:
                 # get det with highest iou
                 iou_pairs = (
-                    (i, det, track.iou_with(det)) for i, det in enumerate(detections)
+                    (i, det, track.iou_with(det))
+                    for i, det in enumerate(detections)
+                    if track.allows_direction_after_gap(frame.no, det)
                 )
-                best_index, best_match, best_iou = max(iou_pairs, key=lambda p: p[2])
+                best = max(iou_pairs, key=lambda p: p[2], default=None)
 
-                if best_iou >= self.sigma_iou:
+                if best is not None and best[2] >= self.sigma_iou:
+                    best_index, best_match, _ = best
                     track.add_detection(frame, best_match)
                     updated_tracks.append(track)
 
