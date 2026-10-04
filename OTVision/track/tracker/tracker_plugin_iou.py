@@ -126,6 +126,16 @@ class ActiveIouTrack:
         candidate = Coordinate.center_of(detection)
         displacement_x = candidate.x - last.x
         displacement_y = candidate.y - last.y
+        elapsed = frame_no - self.last_frame
+        # An opposite-direction vehicle may enter at nearly the same position
+        # a few frames after the first candidate was rejected. Its location
+        # must also remain near the position predicted by recent motion.
+        prediction_error = (
+            (displacement_x - velocity_x * elapsed) ** 2
+            + (displacement_y - velocity_y * elapsed) ** 2
+        ) ** 0.5
+        if prediction_error > 1.5 * diagonal:
+            return False
         # Reject when the candidate lies more than a quarter box diagonal
         # behind the observed direction of travel.
         return velocity_x * displacement_x + velocity_y * displacement_y >= (
