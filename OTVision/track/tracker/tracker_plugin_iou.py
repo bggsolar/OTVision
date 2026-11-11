@@ -99,7 +99,9 @@ class ActiveIouTrack:
     def frame_span(self) -> int:
         return self.last_frame - self.first_frame
 
-    def allows_direction_after_gap(self, frame_no: FrameNo, detection: Detection) -> bool:
+    def allows_direction_after_gap(
+        self, frame_no: FrameNo, detection: Detection
+    ) -> bool:
         """Reject a long-gap match that reverses a recently observed motion.
 
         IoU alone compares the last observed boxes, even when dozens of frames

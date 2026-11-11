@@ -1,8 +1,8 @@
 """Regression tests for persisted top-left xywh detection coordinates."""
 
-from OTVision.domain.detection import Detection
 from types import SimpleNamespace
 
+from OTVision.domain.detection import Detection
 from OTVision.track.tracker.tracker_plugin_iou import (
     ActiveIouTrack,
     BoundingBox,
@@ -101,28 +101,33 @@ def test_single_observation_cannot_bridge_a_long_gap() -> None:
     # Two visually checked false links in the 2295–2460 clip. There is no
     # measured direction before either long absence.
     cases = [
-        (2306, (467.490, 137.496, 82.635, 26.829),
-         2349, (489.375, 140.344, 76.254, 33.118)),
-        (2399, (462.393, 103.096, 52.770, 23.772),
-         2450, (435.727, 104.818, 67.096, 27.220)),
+        (
+            2306,
+            (467.490, 137.496, 82.635, 26.829),
+            2349,
+            (489.375, 140.344, 76.254, 33.118),
+        ),
+        (
+            2399,
+            (462.393, 103.096, 52.770, 23.772),
+            2450,
+            (435.727, 104.818, 67.096, 27.220),
+        ),
     ]
     for first_frame, first_box, last_frame, last_box in cases:
         track = ActiveIouTrack(
             first_frame, SimpleNamespace(no=first_frame), detection(*first_box)
         )
-        assert not track.allows_direction_after_gap(
-            last_frame, detection(*last_box)
-        )
-        assert track.allows_direction_after_gap(
-            first_frame + 3, detection(*last_box)
-        )
+        assert not track.allows_direction_after_gap(last_frame, detection(*last_box))
+        assert track.allows_direction_after_gap(first_frame + 3, detection(*last_box))
 
 
 def test_sparse_recent_motion_blocks_a_different_vehicle() -> None:
     # The car moves left at 10232, 10234 and 10236; at 10260 the boxed
     # object is visibly an orange transporter, almost at the former position.
     track = ActiveIouTrack(
-        2226, SimpleNamespace(no=10232),
+        2226,
+        SimpleNamespace(no=10232),
         detection(194.502, 68.794, 30.179, 17.435),
     )
     track.add_detection(
