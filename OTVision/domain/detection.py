@@ -23,8 +23,8 @@ class Detection:
     Attributes:
         label (str): Assigned label, e.g. vehicle class.
         conf (float): Confidence of detected class.
-        x (float): X-coordinate of detection center.
-        y (float): Y-coordinate of detection center.
+        x (float): X-coordinate of the top-left bounding-box corner.
+        y (float): Y-coordinate of the top-left bounding-box corner.
         w (float): Width of detection.
         h (float): Height of detection.
     """
